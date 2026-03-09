@@ -61,7 +61,17 @@ const Scene = () => {
           let character = gltf.scene;
           setChar(character);
           scene.add(character);
-          headBone = character.getObjectByName("spine006") || null;
+          
+          // Try multiple head bone names
+          headBone = character.getObjectByName("spine006") || 
+                     character.getObjectByName("Head") ||
+                     character.getObjectByName("head") ||
+                     character.getObjectByName("Neck") ||
+                     null;
+          
+          // Log what we found
+          console.log("Head bone:", headBone?.name || "NOT FOUND");
+          
           screenLight = character.getObjectByName("screenlight") || null;
           progress.loaded().then(() => {
             setTimeout(() => {
