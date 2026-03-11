@@ -10,7 +10,7 @@ import {
   handleHeadRotation,
   handleTouchMove,
 } from "./utils/mouseUtils";
-import setAnimations from "./utils/animationUtils";
+// import setAnimations from "./utils/animationUtils";  // Disabled for raj.glb
 import { setProgress } from "../Loading";
 
 const Scene = () => {
@@ -45,9 +45,6 @@ const Scene = () => {
 
       let headBone: THREE.Object3D | null = null;
       let screenLight: any | null = null;
-      let mixer: THREE.AnimationMixer;
-
-      const clock = new THREE.Clock();
 
       const light = setLighting(scene);
       let progress = setProgress((value) => setLoading(value));
@@ -55,28 +52,29 @@ const Scene = () => {
 
       loadCharacter().then((gltf) => {
         if (gltf) {
-          const animations = setAnimations(gltf);
-          hoverDivRef.current && animations.hover(gltf, hoverDivRef.current);
-          mixer = animations.mixer;
+          // Disable animations for raj.glb - they override our sitting pose
+          // const animations = setAnimations(gltf);
+          // hoverDivRef.current && animations.hover(gltf, hoverDivRef.current);
+          // mixer = animations.mixer;
           let character = gltf.scene;
           setChar(character);
           scene.add(character);
-          
+
           // Try multiple head bone names
-          headBone = character.getObjectByName("spine006") || 
-                     character.getObjectByName("Head") ||
-                     character.getObjectByName("head") ||
-                     character.getObjectByName("Neck") ||
-                     null;
-          
+          headBone = character.getObjectByName("spine006") ||
+            character.getObjectByName("Head") ||
+            character.getObjectByName("head") ||
+            character.getObjectByName("Neck") ||
+            null;
+
           // Log what we found
           console.log("Head bone:", headBone?.name || "NOT FOUND");
-          
+
           screenLight = character.getObjectByName("screenlight") || null;
           progress.loaded().then(() => {
             setTimeout(() => {
               light.turnOnLights();
-              animations.startIntro();
+              // animations.startIntro();  // Disabled - no animations for raj.glb
             }, 2500);
           });
           window.addEventListener("resize", () =>
@@ -128,10 +126,6 @@ const Scene = () => {
             THREE.MathUtils.lerp
           );
           light.setPointLight(screenLight);
-        }
-        const delta = clock.getDelta();
-        if (mixer) {
-          mixer.update(delta);
         }
         renderer.render(scene, camera);
       };

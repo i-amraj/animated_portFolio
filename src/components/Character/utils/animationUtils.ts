@@ -5,23 +5,23 @@ import { eyebrowBoneNames, typingBoneNames } from "../../../data/boneData";
 const setAnimations = (gltf: GLTF) => {
   let character = gltf.scene;
   let mixer = new THREE.AnimationMixer(character);
-  
+
   // Log available animations
   console.log("Available animations:", gltf.animations?.map(a => a.name) || []);
-  
+
   if (gltf.animations && gltf.animations.length > 0) {
     // Try to find intro animation
     const introClip = gltf.animations.find(
       (clip) => clip.name === "introAnimation" || clip.name === "intro" || clip.name === "Idle"
     );
-    
+
     if (introClip) {
       const introAction = mixer.clipAction(introClip);
       introAction.setLoop(THREE.LoopOnce, 1);
       introAction.clampWhenFinished = true;
       introAction.play();
     }
-    
+
     // Try key animations
     const clipNames = ["key1", "key2", "key5", "key6"];
     clipNames.forEach((name) => {
@@ -32,7 +32,7 @@ const setAnimations = (gltf: GLTF) => {
         action!.timeScale = 1.2;
       }
     });
-    
+
     // Try typing animation
     let typingAction: THREE.AnimationAction | null = null;
     typingAction = createBoneAction(gltf, mixer, "typing", typingBoneNames);
@@ -42,18 +42,18 @@ const setAnimations = (gltf: GLTF) => {
       typingAction.timeScale = 1.2;
     }
   }
-  
+
   function startIntro() {
     const introClip = gltf.animations?.find(
       (clip) => clip.name === "introAnimation" || clip.name === "intro" || clip.name === "Idle"
     );
-    
+
     if (introClip) {
       const introAction = mixer.clipAction(introClip);
       introAction.clampWhenFinished = true;
       introAction.reset().play();
     }
-    
+
     setTimeout(() => {
       const blink = gltf.animations?.find((clip) => clip.name === "Blink" || clip.name === "blink");
       if (blink) {
@@ -61,7 +61,7 @@ const setAnimations = (gltf: GLTF) => {
       }
     }, 2500);
   }
-  
+
   function hover(gltf: GLTF, hoverDiv: HTMLDivElement) {
     let eyeBrowUpAction = createBoneAction(
       gltf,

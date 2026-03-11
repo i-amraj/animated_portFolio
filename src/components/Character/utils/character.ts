@@ -2,29 +2,34 @@ import * as THREE from "three";
 import { DRACOLoader, GLTF, GLTFLoader } from "three-stdlib";
 import { setCharTimeline, setAllTimeline } from "../../utils/GsapScroll";
 
-// Character Y position adjustment (negative = down, positive = up)
-const CHARACTER_Y_OFFSET = -2.5;  // Adjust this value to move character up/down
+// Character position offset
+const CHARACTER_Y_OFFSET = -0.7;
 
-// Sitting pose from pose tester
+// Character scale (H=height, W=width)
+const CHARACTER_SCALE = { x: 1.20, y: 1.30, z: 1.20 };
+
+// Sitting pose
 const SITTING_POSE: Record<string, [number, number, number]> = {
-  'LeftUpLeg': [3, 19, -159],
-  'LeftLeg': [-62, 28, 0],
-  'LeftFoot': [44, -21, 0],
-  'RightUpLeg': [9, 0, -173],
-  'RightLeg': [-67, 12, 0],
-  'RightFoot': [70, 10, 2],
-  'LeftArm': [48, 175, -3],
-  'LeftForeArm': [-33, -175, 75],
-  'LeftHand': [62, 90, -17],
-  'RightArm': [40, 74, -24],
-  'RightForeArm': [96, -85, -10],
-  'RightHand': [3, 0, 1],
-  'Hips': [-75, 0, 0],
-  'Spine': [83, 0, 0],
-  'Spine1': [-8, 0, 0],
+  'LeftUpLeg': [-86, 0, -180],
+  'LeftLeg': [-98, 0, 0],
+  'LeftFoot': [75, 2, 0],
+  'RightUpLeg': [-92, 0, 180],
+  'RightLeg': [-96, 11, -1],
+  'RightFoot': [66, -2, 2],
+  'LeftShoulder': [78, -3, -105],
+  'LeftArm': [38, 41, 39],
+  'LeftForeArm': [15, 4, 42],
+  'LeftHand': [-13, 19, 12],
+  'RightShoulder': [47, 11, 103],
+  'RightArm': [60, 17, 15],
+  'RightForeArm': [-80, -59, -119],
+  'RightHand': [-12, -31, -7],
+  'Hips': [8, 0, 0],
+  'Spine': [-2, 0, 0],
+  'Spine1': [-9, 0, 0],
   'Spine2': [-9, 0, 0],
-  'Neck': [28, 0, 0],
-  'Head': [-13, 0, 0],
+  'Neck': [38, -2, 0],
+  'Head': [-4, 0, 0],
 };
 
 function applySittingPose(character: THREE.Object3D) {
@@ -63,17 +68,42 @@ const setCharacter = (
           "/models/raj.glb",  // Original model - pose applied at runtime
           async (gltf) => {
             character = gltf.scene;
-            
+
+            // Hide monitor, frame, screenlight immediately before any render
+            // Use direct children loop since getObjectByName might miss dot-named objects
+            character.children.forEach((child: any) => {
+              if (["Plane.004", "Cube.002", "screenlight"].includes(child.name)) {
+                child.visible = false;
+                console.log("Hidden:", child.name);
+              }
+            });
+
             // Apply sitting pose
             applySittingPose(character);
-            
+
             // Move only the Armature (avatar), not desk/chair
             const armature = character.getObjectByName("Armature");
             if (armature) {
-              armature.position.y += CHARACTER_Y_OFFSET;
-              console.log("Moved only Armature by", CHARACTER_Y_OFFSET);
+              // Store original scale and multiply by our scale factor
+              const originalScale = {
+                x: armature.scale.x,
+                y: armature.scale.y,
+                z: armature.scale.z
+              };
+              console.log("Original armature scale:", originalScale);
+
+              // SET position directly (same as pose-tester)
+              armature.position.y = CHARACTER_Y_OFFSET;
+
+              // Apply scale as multiplier of original
+              armature.scale.set(
+                originalScale.x * CHARACTER_SCALE.x,
+                originalScale.y * CHARACTER_SCALE.y,
+                originalScale.z * CHARACTER_SCALE.z
+              );
+              console.log("Moved to y:", CHARACTER_Y_OFFSET, "Scaled to:", armature.scale);
             }
-            
+
             await renderer.compileAsync(character, camera, scene);
             character.traverse((child: any) => {
               if (child.isMesh) {
@@ -86,13 +116,13 @@ const setCharacter = (
             resolve(gltf);
             setCharTimeline(character, camera);
             setAllTimeline();
-            
+
             // Try to set foot positions if they exist
             const footR = character.getObjectByName("footR");
             const footL = character.getObjectByName("footL");
             if (footR) footR.position.y = 3.36;
             if (footL) footL.position.y = 3.36;
-            
+
             dracoLoader.dispose();
           },
           undefined,

@@ -21,7 +21,7 @@
     .value { width: 50px; text-align: right; font-family: monospace; }
     button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #4ade80; border: none; border-radius: 4px; font-weight: bold; }
     button:hover { background: #22c55e; }
-    #output { margin-top: 10px; padding: 10px; background: #1e1e2e; border-radius: 4px; font-family: monospace; font-size: 10px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+    #output { margin-top: 10px; padding: 10px; background: #1e1e2e; border-radius: 4px; font-family: monospace; font-size: 10px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; user-select: all; cursor: text; border: 1px solid #444; }
     h3 { color: #a78bfa; margin: 15px 0 5px; border-bottom: 1px solid #a78bfa; padding-bottom: 5px; }
     .position-control { background: #3d2d54; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
     .section-title { color: #fbbf24; font-weight: bold; margin-bottom: 8px; }
@@ -33,6 +33,7 @@
     <h2>🎮 Pose & Position Tester</h2>
     <button onclick="resetPose()">Reset Pose</button>
     <button onclick="copyCode()">📋 Copy Full Code</button>
+    <button onclick="selectOutput()">📝 Select Code</button>
     
     <h3>📍 CHARACTER POSITION</h3>
     <div class="position-control">
@@ -322,9 +323,8 @@
           const y = Math.round(THREE.MathUtils.radToDeg(bone.rotation.y));
           const z = Math.round(THREE.MathUtils.radToDeg(bone.rotation.z));
           
-          if (x !== 0 || y !== 0 || z !== 0) {
-            poseOutput[name] = [x, y, z];
-          }
+          // Always include the bone rotation (even if 0,0,0)
+          poseOutput[name] = [x, y, z];
         }
       });
       
@@ -338,13 +338,51 @@
       code += `};`;
       
       document.getElementById('output').textContent = code;
+      
+      // Store in window for easy copy
+      window.generatedCode = code;
     }
     
     window.copyCode = function() {
-      const code = document.getElementById('output').textContent;
-      navigator.clipboard.writeText(code).then(() => {
-        alert('✅ Code copied! Paste it to update character.ts');
-      });
+      const code = window.generatedCode || document.getElementById('output').textContent;
+      
+      // Try clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(() => {
+          alert('✅ Code copied!');
+        }).catch(err => {
+          // Fallback: create textarea and copy
+          fallbackCopy(code);
+        });
+      } else {
+        fallbackCopy(code);
+      }
+    };
+    
+    function fallbackCopy(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        alert('✅ Code copied!');
+      } catch (e) {
+        alert('❌ Copy failed. Please select and copy manually from output box.');
+      }
+      document.body.removeChild(textarea);
+    }
+    
+    window.selectOutput = function() {
+      const output = document.getElementById('output');
+      const range = document.createRange();
+      range.selectNodeContents(output);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      alert('Code selected! Now press Ctrl+C to copy.');
     };
     
     // Animation loop
