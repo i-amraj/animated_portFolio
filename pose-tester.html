@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pose Tester - raj.glb</title>
+  <style>
+    body { margin: 0; background: #1a1a2e; font-family: Arial; }
+    #canvas { width: 100%; height: 100vh; display: block; }
+    #controls {
+      position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9);
+      padding: 15px; color: white; max-height: 90vh; overflow-y: auto;
+      border-radius: 8px; width: 340px;
+    }
+    .bone-control { margin: 8px 0; padding: 8px; background: #2d2d44; border-radius: 4px; }
+    .bone-name { font-weight: bold; color: #7dd3fc; margin-bottom: 5px; }
+    .axis-row { display: flex; align-items: center; margin: 3px 0; }
+    .axis-label { width: 20px; font-weight: bold; }
+    .axis-label.x { color: #ff6b6b; }
+    .axis-label.y { color: #4ade80; }
+    .axis-label.z { color: #60a5fa; }
+    input[type="range"] { flex: 1; margin: 0 8px; }
+    .value { width: 50px; text-align: right; font-family: monospace; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #4ade80; border: none; border-radius: 4px; font-weight: bold; }
+    button:hover { background: #22c55e; }
+    #output { margin-top: 10px; padding: 10px; background: #1e1e2e; border-radius: 4px; font-family: monospace; font-size: 10px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; user-select: all; cursor: text; border: 1px solid #444; }
+    h3 { color: #a78bfa; margin: 15px 0 5px; border-bottom: 1px solid #a78bfa; padding-bottom: 5px; }
+    .position-control { background: #3d2d54; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
+    .section-title { color: #fbbf24; font-weight: bold; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div id="canvas"></div>
+  <div id="controls">
+    <h2>🎮 Pose & Position Tester</h2>
+    <button onclick="resetPose()">Reset Pose</button>
+    <button onclick="copyCode()">📋 Copy Full Code</button>
+    <button onclick="selectOutput()">📝 Select Code</button>
+    
+    <h3>📍 CHARACTER POSITION</h3>
+    <div class="position-control">
+      <div class="axis-row">
+        <span class="axis-label x">X</span>
+        <input type="range" min="-5" max="5" step="0.1" value="0" id="pos_x" oninput="updatePosition()">
+        <span class="value" id="pos_x_val">0</span>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label y">Y</span>
+        <input type="range" min="-5" max="5" step="0.1" value="0" id="pos_y" oninput="updatePosition()">
+        <span class="value" id="pos_y_val">0</span>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label z">Z</span>
+        <input type="range" min="-5" max="5" step="0.1" value="0" id="pos_z" oninput="updatePosition()">
+        <span class="value" id="pos_z_val">0</span>
+      </div>
+    </div>
+    
+    <h3>📐 CHARACTER SIZE</h3>
+    <div class="position-control">
+      <div class="axis-row">
+        <span class="axis-label" style="color:#fbbf24;">H</span>
+        <input type="range" min="1" max="2" step="0.05" value="1" id="scale_y" oninput="updateScale()">
+        <span class="value" id="scale_y_val">1.0</span>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label" style="color:#f472b6;">W</span>
+        <input type="range" min="1" max="2" step="0.05" value="1" id="scale_xz" oninput="updateScale()">
+        <span class="value" id="scale_xz_val">1.0</span>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label" style="color:#22d3ee;">A</span>
+        <input type="range" min="1" max="2" step="0.05" value="1" id="scale_all" oninput="updateScaleAll()">
+        <span class="value" id="scale_all_val">1.0</span>
+      </div>
+    </div>
+    
+    <h3>🦵 LEGS</h3>
+    <div id="leg-controls"></div>
+    
+    <h3>💪 ARMS</h3>
+    <div id="arm-controls"></div>
+    
+    <h3>🦴 SPINE & HEAD</h3>
+    <div id="spine-controls"></div>
+    
+    <h3>📝 GENERATED CODE</h3>
+    <div id="output"></div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+    }
+  }
+  </script>
+  
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const bones = {};
+    let model;
+    let armature; // Only the avatar, not desk/chair
+    let originalScale = { x: 1, y: 1, z: 1 }; // Store original armature scale
+    let characterPosition = { x: 0, y: 0, z: 0 };
+    let characterScale = { x: 1, y: 1, z: 1 }; // Multiplier (1 = original size)
+    
+    // Bones to control
+    const LEG_BONES = ['LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
+    const ARM_BONES = ['LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand'];
+    const SPINE_BONES = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head'];
+
+    // Setup Three.js
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+    
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 5, 8);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('canvas').appendChild(renderer.domElement);
+    
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 4, 0);
+    controls.update();
+    
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(5, 10, 5);
+    scene.add(dirLight);
+    
+    // Grid & Axes
+    scene.add(new THREE.GridHelper(10, 10));
+    scene.add(new THREE.AxesHelper(3));
+
+    // Load model (raj.glb has desk/chair included)
+    const loader = new GLTFLoader();
+    loader.load('/models/raj.glb', (gltf) => {
+      model = gltf.scene;
+      scene.add(model);
+      
+      // Find the Armature (avatar only, not desk/chair)
+      armature = model.getObjectByName('Armature');
+      console.log('Armature found:', armature ? 'YES' : 'NO');
+      
+      // Store original scale (to use as base for multiplier)
+      if (armature) {
+        originalScale = { 
+          x: armature.scale.x, 
+          y: armature.scale.y, 
+          z: armature.scale.z 
+        };
+        console.log('Original armature scale:', originalScale);
+        characterScale = { x: 1, y: 1, z: 1 }; // Multiplier starts at 1 (no change)
+      }
+      
+      // Find all bones
+      model.traverse((obj) => {
+        if (obj.isBone) {
+          bones[obj.name] = obj;
+        }
+      });
+      
+      console.log('Available bones:', Object.keys(bones));
+      
+      // Create controls
+      createBoneControls('leg-controls', LEG_BONES);
+      createBoneControls('arm-controls', ARM_BONES);
+      createBoneControls('spine-controls', SPINE_BONES);
+      
+      updateOutput();
+    }, undefined, (err) => console.error('Load error:', err));
+    
+    function createBoneControls(containerId, boneNames) {
+      const container = document.getElementById(containerId);
+      
+      boneNames.forEach(name => {
+        const div = document.createElement('div');
+        div.className = 'bone-control';
+        div.dataset.bone = name;
+        div.innerHTML = `
+          <div class="bone-name">${name}</div>
+          ${createAxisSlider(name, 'x')}
+          ${createAxisSlider(name, 'y')}
+          ${createAxisSlider(name, 'z')}
+        `;
+        container.appendChild(div);
+      });
+    }
+    
+    function createAxisSlider(bone, axis) {
+      return `
+        <div class="axis-row">
+          <span class="axis-label ${axis}">${axis.toUpperCase()}</span>
+          <input type="range" min="-180" max="180" value="0" 
+                 oninput="window.updateBone('${bone}', '${axis}', this.value)"
+                 id="${bone}_${axis}">
+          <span class="value" id="${bone}_${axis}_val">0°</span>
+        </div>
+      `;
+    }
+    
+    window.updateBone = function(boneName, axis, value) {
+      const bone = bones[boneName];
+      if (!bone) return;
+      
+      const rad = THREE.MathUtils.degToRad(parseFloat(value));
+      bone.rotation[axis] = rad;
+      
+      document.getElementById(`${boneName}_${axis}_val`).textContent = value + '°';
+      updateOutput();
+    };
+    
+    window.updatePosition = function() {
+      if (!armature) return;
+      
+      characterPosition.x = parseFloat(document.getElementById('pos_x').value);
+      characterPosition.y = parseFloat(document.getElementById('pos_y').value);
+      characterPosition.z = parseFloat(document.getElementById('pos_z').value);
+      
+      // Move only Armature (avatar), NOT desk/chair
+      armature.position.set(characterPosition.x, characterPosition.y, characterPosition.z);
+      
+      document.getElementById('pos_x_val').textContent = characterPosition.x.toFixed(1);
+      document.getElementById('pos_y_val').textContent = characterPosition.y.toFixed(1);
+      document.getElementById('pos_z_val').textContent = characterPosition.z.toFixed(1);
+      
+      updateOutput();
+    };
+    
+    window.updateScale = function() {
+      if (!armature) return;
+      
+      characterScale.y = parseFloat(document.getElementById('scale_y').value);
+      const xz = parseFloat(document.getElementById('scale_xz').value);
+      characterScale.x = xz;
+      characterScale.z = xz;
+      
+      // Apply scale as multiplier of original scale
+      armature.scale.set(
+        originalScale.x * characterScale.x, 
+        originalScale.y * characterScale.y, 
+        originalScale.z * characterScale.z
+      );
+      
+      document.getElementById('scale_y_val').textContent = characterScale.y.toFixed(2);
+      document.getElementById('scale_xz_val').textContent = xz.toFixed(2);
+      
+      updateOutput();
+    };
+    
+    window.updateScaleAll = function() {
+      if (!armature) return;
+      
+      const scale = parseFloat(document.getElementById('scale_all').value);
+      characterScale.x = scale;
+      characterScale.y = scale;
+      characterScale.z = scale;
+      
+      // Apply scale as multiplier of original scale
+      armature.scale.set(
+        originalScale.x * scale, 
+        originalScale.y * scale, 
+        originalScale.z * scale
+      );
+      
+      // Update other sliders too
+      document.getElementById('scale_y').value = scale;
+      document.getElementById('scale_xz').value = scale;
+      document.getElementById('scale_y_val').textContent = scale.toFixed(2);
+      document.getElementById('scale_xz_val').textContent = scale.toFixed(2);
+      document.getElementById('scale_all_val').textContent = scale.toFixed(2);
+      
+      updateOutput();
+    };
+    
+    window.resetPose = function() {
+      Object.values(bones).forEach(bone => {
+        bone.rotation.set(0, 0, 0);
+      });
+      
+      if (armature) {
+        armature.position.set(0, 0, 0);
+        // Reset to original scale
+        armature.scale.set(originalScale.x, originalScale.y, originalScale.z);
+        characterPosition = { x: 0, y: 0, z: 0 };
+        characterScale = { x: 1, y: 1, z: 1 }; // Reset multiplier to 1
+      }
+      
+      document.querySelectorAll('input[type="range"]').forEach(input => {
+        if (input.id.startsWith('scale_')) {
+          input.value = 1;
+        } else if (input.id.startsWith('pos_')) {
+          input.value = 0;
+        } else {
+          input.value = 0;
+        }
+      });
+      document.querySelectorAll('.value').forEach(span => {
+        if (span.id.startsWith('pos_')) {
+          span.textContent = '0';
+        } else if (span.id.startsWith('scale_')) {
+          span.textContent = '1.0';
+        } else {
+          span.textContent = '0°';
+        }
+      });
+      updateOutput();
+    };
+    
+    function updateOutput() {
+      const poseOutput = {};
+      const allBones = [...LEG_BONES, ...ARM_BONES, ...SPINE_BONES];
+      
+      allBones.forEach(name => {
+        const bone = bones[name];
+        if (bone) {
+          const x = Math.round(THREE.MathUtils.radToDeg(bone.rotation.x));
+          const y = Math.round(THREE.MathUtils.radToDeg(bone.rotation.y));
+          const z = Math.round(THREE.MathUtils.radToDeg(bone.rotation.z));
+          
+          // Always include the bone rotation (even if 0,0,0)
+          poseOutput[name] = [x, y, z];
+        }
+      });
+      
+      // Generate full code for character.ts
+      let code = `// Character position offset\nconst CHARACTER_Y_OFFSET = ${characterPosition.y.toFixed(1)};\n\n`;
+      code += `// Character scale (H=height, W=width)\nconst CHARACTER_SCALE = { x: ${characterScale.x.toFixed(2)}, y: ${characterScale.y.toFixed(2)}, z: ${characterScale.z.toFixed(2)} };\n\n`;
+      code += `// Sitting pose\nconst SITTING_POSE = {\n`;
+      for (const [name, rot] of Object.entries(poseOutput)) {
+        code += `  '${name}': [${rot[0]}, ${rot[1]}, ${rot[2]}],\n`;
+      }
+      code += `};`;
+      
+      document.getElementById('output').textContent = code;
+      
+      // Store in window for easy copy
+      window.generatedCode = code;
+    }
+    
+    window.copyCode = function() {
+      const code = window.generatedCode || document.getElementById('output').textContent;
+      
+      // Try clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(() => {
+          alert('✅ Code copied!');
+        }).catch(err => {
+          // Fallback: create textarea and copy
+          fallbackCopy(code);
+        });
+      } else {
+        fallbackCopy(code);
+      }
+    };
+    
+    function fallbackCopy(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        alert('✅ Code copied!');
+      } catch (e) {
+        alert('❌ Copy failed. Please select and copy manually from output box.');
+      }
+      document.body.removeChild(textarea);
+    }
+    
+    window.selectOutput = function() {
+      const output = document.getElementById('output');
+      const range = document.createRange();
+      range.selectNodeContents(output);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      alert('Code selected! Now press Ctrl+C to copy.');
+    };
+    
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+    
+    // Resize handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

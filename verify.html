@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Model Verification</title>
+  <style>
+    body { margin: 0; background: #111; color: #0f0; font-family: monospace; padding: 20px; }
+    #canvas { width: 100%; height: 70vh; display: block; }
+    #log { background: #000; padding: 15px; margin-top: 10px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
+    .error { color: #f00; }
+    .success { color: #0f0; }
+    .info { color: #0af; }
+  </style>
+</head>
+<body>
+  <h2>🔍 Model Verification - raj-final.glb</h2>
+  <div id="canvas"></div>
+  <div id="log"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const logDiv = document.getElementById('log');
+    
+    function log(msg, type = 'info') {
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logDiv.appendChild(line);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(msg);
+    }
+
+    // Scene setup
+    const container = document.getElementById('canvas');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+    
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera.position.set(-1.5, 1.5, 2.5);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+    
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1, 0);
+    controls.update();
+    
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(3, 5, 3);
+    scene.add(dirLight);
+    scene.add(new THREE.GridHelper(5, 5));
+    
+    // Load model
+    log('Loading raj-final.glb...', 'info');
+    
+    const loader = new GLTFLoader();
+    loader.load('/models/raj-final.glb', 
+      (gltf) => {
+        log('✅ Model loaded successfully!', 'success');
+        
+        const model = gltf.scene;
+        scene.add(model);
+        
+        // Check bones
+        let boneCount = 0;
+        const keyBones = ['Hips', 'LeftUpLeg', 'LeftLeg', 'RightUpLeg', 'RightLeg', 'LeftArm', 'RightArm', 'Head'];
+        const foundBones = [];
+        
+        model.traverse((obj) => {
+          if (obj.isBone) {
+            boneCount++;
+            if (keyBones.includes(obj.name)) {
+              foundBones.push(obj.name);
+              
+              // Check LeftUpLeg direction (should be forward for sitting)
+              if (obj.name === 'LeftUpLeg') {
+                const worldPos = new THREE.Vector3();
+                obj.getWorldPosition(worldPos);
+                log(`  LeftUpLeg position: (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}, ${worldPos.z.toFixed(2)})`, 'info');
+              }
+            }
+          }
+        });
+        
+        log(`Total bones: ${boneCount}`, 'info');
+        log(`Key bones found: ${foundBones.join(', ')}`, foundBones.length === keyBones.length ? 'success' : 'error');
+        
+        // Check animations
+        log('', 'info');
+        log('ANIMATIONS:', 'info');
+        if (gltf.animations && gltf.animations.length > 0) {
+          gltf.animations.forEach(anim => {
+            log(`  - ${anim.name} (${anim.duration.toFixed(2)}s)`, 'success');
+          });
+          
+          // Check required animations
+          const required = ['introAnimation', 'typing', 'Blink', 'browup'];
+          const found = gltf.animations.map(a => a.name);
+          required.forEach(name => {
+            if (found.includes(name)) {
+              log(`  ✅ ${name} found`, 'success');
+            } else {
+              log(`  ❌ ${name} MISSING`, 'error');
+            }
+          });
+        } else {
+          log('  ❌ No animations found!', 'error');
+        }
+        
+        // Check sitting pose by looking at leg positions
+        log('', 'info');
+        log('POSE CHECK:', 'info');
+        
+        const leftUpLeg = model.getObjectByName('LeftUpLeg');
+        const leftLeg = model.getObjectByName('LeftLeg');
+        
+        if (leftUpLeg && leftLeg) {
+          const hipPos = new THREE.Vector3();
+          const kneePos = new THREE.Vector3();
+          const anklePos = new THREE.Vector3();
+          
+          leftUpLeg.getWorldPosition(hipPos);
+          leftLeg.getWorldPosition(kneePos);
+          
+          // If knee is forward of hip (Y > hip Y in character space), it's sitting
+          if (kneePos.z > hipPos.z - 0.1) {
+            log('  ✅ Character appears to be SITTING (knee forward of hip)', 'success');
+          } else {
+            log('  ❌ Character may be STANDING (knee below hip)', 'error');
+          }
+        }
+        
+        log('', 'info');
+        log('=== VERIFICATION COMPLETE ===', 'success');
+      },
+      (progress) => {
+        if (progress.total) {
+          const pct = Math.round(progress.loaded / progress.total * 100);
+          log(`Loading: ${pct}%`, 'info');
+        }
+      },
+      (error) => {
+        log(`❌ ERROR loading model: ${error.message}`, 'error');
+      }
+    );
+    
+    // Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+    
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+  </script>
+</body>
+</html>
